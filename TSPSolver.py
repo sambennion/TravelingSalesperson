@@ -16,6 +16,7 @@ else:
 import time
 import numpy as np
 from TSPClasses import *
+import copy
 import heapq
 import itertools
 
@@ -82,9 +83,54 @@ class TSPSolver:
 		solution found, and three null values for fields not used for this
 		algorithm</returns>
 	'''
+	#Time Complexity is O(n) where n is the len(cities)
+	#Space Complexity is O(n) where n is the size of cities
+	def short_edge(self, currentCity, cities):
+		shortest = float("Inf")
+		index = 0
+		for i in range(len(cities)):
+			cost = currentCity.costTo(cities[i])
+			if cost < shortest:
+				shortest = cost
+				index = i
+		return cities.pop(index)
+
 
 	def greedy( self,time_allowance=60.0 ):
-		pass
+		# Set cities to shallow copy of getCities(). 
+		# Copy because we'll be popping them off in my algorithm 
+		# so we don't affect the original cities object.
+		cities = copy.copy(self._scenario.getCities())
+		foundTour = False
+		count = 0
+		bssf = None
+		start_time = time.time()
+		route = []
+		while not foundTour and time.time()-start_time < time_allowance:
+			
+			currentCity = cities.pop(count)
+			route = [currentCity]
+			while not foundTour and time.time()-start_time < time_allowance and len(cities) > 0:
+				currentCity = self.short_edge(currentCity, cities)
+				route.append(currentCity)
+			bssf = TSPSolution(route)
+			# bssf in the greedy sense will just be the first one that 
+			# find a tour.
+			if(bssf.cost < math.inf):
+				foundTour = True
+			else:
+				cities = copy.copy(self._scenario.getCities())
+			count += 1
+		end_time = time.time()
+		results = {}
+		results['cost'] = bssf.cost if foundTour else math.inf
+		results['time'] = end_time - start_time
+		results['count'] = count
+		results['soln'] = bssf
+		results['max'] = None
+		results['total'] = None
+		results['pruned'] = None
+		return results
 
 
 
@@ -97,8 +143,47 @@ class TSPSolver:
 		max queue size, total number of states created, and number of pruned states.</returns>
 	'''
 
+	def reduce_matrix(self, matrix):
+		n = len(matrix)
+		# print(matrix)
+		min_of_rows = np.amin(matrix, axis=1)
+		# print(min_of_rows)
+		#reduce rows first
+		for i in range(n):
+			matrix[i:] -= min_of_rows[i]
+		matrix[matrix<0] = 0
+		# reduce each column
+		min_of_columns = np.amin(matrix, axis=0)
+		# print(np.shape(min_of_columns))
+		# print(matrix)
+		print(min_of_columns)
+		for i in range(n):
+			matrix[:,i] = matrix[:,i] - min_of_columns[0, i]
+		matrix[matrix<0] = 0
+		cost = np.sum(min_of_rows) + np.sum(min_of_columns)
+		
+		return matrix, cost
+
+
 	def branchAndBound( self, time_allowance=60.0 ):
-		pass
+		cities = self._scenario.getCities()
+		n = len(cities)
+		#Matrix uses O(n^2 space)
+		matrix = np.matrix(np.ones((n,n)) * np.inf)
+		#O(n^2) time to initialize this array with distances.
+		for i in range(n):
+			for j in range(n):
+				matrix[i, j] = cities[i].costTo(cities[j])
+		#Running a greedy first thing off the bat will create a baseline for upperbound.
+		#It tells us a few things that will save us time, it gives us a starting node that has
+		#a solution, and it will allow us to prune out routes that aren't fruitful early on.
+
+		greedy_results = self.greedy(time_allowance=60.0)
+		upper_bound = greedy_results['cost']
+		starting_node = greedy_results['count'] - 1
+		reduced_matrix, cost = self.reduce_matrix(copy.deepcopy(matrix))
+		
+		return
 
 
 
