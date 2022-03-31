@@ -146,16 +146,19 @@ class TSPSolver:
 	'''
 
 	def reduce_matrix(self, matrix):
+		# print(matrix)
 		n = len(matrix)
 		# print(matrix)
 		min_of_rows = np.amin(matrix, axis=1)
+		# print("Min of rows = " + str(min_of_rows))
 		# print(min_of_rows)
 		#reduce rows first
 		for i in range(n):
 			if(min_of_rows[i] < np.inf):
-				matrix[i:] -= min_of_rows[i]
+				matrix[i] -= min_of_rows[i]
 			else:
 				min_of_rows[i] = 0 #This is for summing at the end.
+		# print(matrix)
 		matrix[matrix<0] = 0
 		# reduce each column
 		min_of_columns = np.amin(matrix, axis=0)
@@ -190,8 +193,10 @@ class TSPSolver:
 		state_count = n
 		pruned = 0
 		lower_bound = results['cost']
+		# print(lower_bound)
 		starting_node = results['count'] - 1
 		bssf = results['soln']
+		count = 1
 		#Runs in n^2 time
 		start_time = time.time()
 		reduced_matrix, initial_cost = self.reduce_matrix(copy.deepcopy(matrix))
@@ -229,6 +234,7 @@ class TSPSolver:
 		# print(pq[2])
 		while len(pq) > 0 and start_time - time_allowance > 0:
 			initial_cost, index, reduced_matrix, path = heapq.heappop(pq)
+			# print(path)
 			if initial_cost >= lower_bound:
 				pruned += 1
 				continue
@@ -240,36 +246,46 @@ class TSPSolver:
 				if i == starting_node:
 					continue
 				edge_cost = reduced_matrix[index, i]
+				
 				if edge_cost == np.inf:
 					continue
+				# print(edge_cost)
 				#same as above
-				new_reduced = copy.deepcopy(reduced_matrix)
+				new_reduced = reduced_matrix
 				new_reduced[index] += np.inf
 				new_reduced[:,i] += np.inf
-				new_reduced[i, index] = np.inf
+				new_reduced[i, index] += np.inf
+				# print(new_reduced)
 				new_reduced, reduction_cost = self.reduce_matrix(copy.copy(new_reduced))
 				#Same
+				# print(initial_cost)
 				node_cost = edge_cost + initial_cost + reduction_cost
+				# print(edge_cost)
+				# print(node_cost)
 				if node_cost >= lower_bound:
 					pruned += 1
 				else:
 					path.append(i)
 					if len(path) < n:
-						heapq.heappush(pq, (node_cost, i, copy.copy(new_reduced), path))
+						heapq.heappush(pq, (node_cost, i, new_reduced, path))
 					else:
 						#create new lower bound bssf
+						# print(node_cost)
 						lower_bound = node_cost
 						# print(path)
 						# print(matrix)
+						# print(new_reduced)
 						# route = [cities[j] for j in path]
+						count += 1
 						bssf = TSPSolution([cities[j] for j in path])
 						# print(bssf.route)
 
 
 		end_time = time.time()
-		results['cost'] = lower_bound
+		results['cost'] = bssf.cost
 		results['time'] = end_time - start_time
 		results['soln'] = bssf
+		results['count'] = count
 		results['max'] = None
 		results['total'] = None
 		results['pruned'] = pruned
