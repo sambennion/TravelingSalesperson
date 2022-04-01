@@ -1,5 +1,6 @@
 #!/usr/bin/python3
 
+from inspect import ismethoddescriptor
 import queue
 from which_pyqt import PYQT_VER
 if PYQT_VER == 'PYQT5':
@@ -19,13 +20,12 @@ import numpy as np
 from TSPClasses import *
 import copy
 import heapq
-import itertools
-
 
 
 class TSPSolver:
 	def __init__( self, gui_view ):
 		self._scenario = None
+		
 
 	def setupWithScenario( self, scenario ):
 		self._scenario = scenario
@@ -146,25 +146,20 @@ class TSPSolver:
 	'''
 
 	def reduce_matrix(self, matrix):
-		# print(matrix)
 		n = len(matrix)
-		# print(matrix)
 		min_of_rows = np.amin(matrix, axis=1)
-		# print("Min of rows = " + str(min_of_rows))
-		# print(min_of_rows)
+
 		#reduce rows first
 		for i in range(n):
 			if(min_of_rows[i] < np.inf):
 				matrix[i] -= min_of_rows[i]
 			else:
-				min_of_rows[i] = 0 #This is for summing at the end.
+				#This is for summing at the end.
+				min_of_rows[i] = 0 
 		# print(matrix)
 		matrix[matrix<0] = 0
 		# reduce each column
 		min_of_columns = np.amin(matrix, axis=0)
-		# print(np.shape(min_of_columns))
-		# print(matrix)
-		# print(min_of_columns)
 		for i in range(n):
 			if(min_of_columns[0, i] < np.inf):
 				matrix[:,i] = matrix[:,i] - min_of_columns[0, i]
@@ -172,48 +167,49 @@ class TSPSolver:
 				min_of_columns[0, i] = 0
 		matrix[matrix<0] = 0
 		cost = np.sum(min_of_rows) + np.sum(min_of_columns)
-		# print(cost)
 		return matrix, cost
 
 
 	def branchAndBound( self, time_allowance=60.0 ):
+		
+		tiebreaker = 0
 		cities = copy.deepcopy(self._scenario.getCities())
 		n = len(cities)
+		max_states = 1
 		#Matrix uses O(n^2 space)
 		matrix = np.matrix(np.ones((n,n)) * np.inf)
 		#O(n^2) time to initialize this array with distances.
 		for i in range(n):
 			for j in range(n):
 				matrix[i, j] = cities[i].costTo(cities[j])
+
 		#Running a greedy first thing off the bat will create a baseline for upperbound.
 		#It tells us a few things that will save us time, it gives us a starting node that has
 		#a solution, and it will allow us to prune out routes that aren't fruitful early on.
 		
 		results = self.greedy(time_allowance=60.0)
-		state_count = n
+		state_count = 1
 		pruned = 0
 		lower_bound = results['cost']
 		# print(lower_bound)
 		starting_node = results['count'] - 1
 		bssf = results['soln']
 		count = 1
-		#Runs in n^2 time
 		start_time = time.time()
+		#Runs in n^2 time
 		reduced_matrix, initial_cost = self.reduce_matrix(copy.deepcopy(matrix))
-		# currentCity = cities[starting_node]
-
-		# reduced_matrix[:,0] += np.inf
-		# print(reduced_matrix)
 		pq = []
 		#Somehow need to keep track of parent cost, 
 		# added matrix cost, and the reducucing cost.
 		
 		#Initial loop to add nodes and costs to pq. Runs O(n) time
 		for i in range(len(cities)):
-			if start_time - time_allowance <= 0:
-					break
+			
+			if len(pq) > max_states:
+				max_states = len(pq)
 			edge_cost = reduced_matrix[starting_node, i]
 			if edge_cost == np.inf:
+				# print(i)
 				continue
 			new_reduced = copy.deepcopy(reduced_matrix)
 			new_reduced[starting_node] += np.inf
@@ -224,76 +220,66 @@ class TSPSolver:
 			node_cost = edge_cost + initial_cost + reduction_cost
 			
 			if node_cost >= lower_bound:
-				
-				# print("Node: " + str(node_cost) + " Upper: " + str(lower_bound))
 				pruned += 1
 			else:
-				# print(i)
-				heapq.heappush(pq, (node_cost, i, copy.copy(new_reduced), [starting_node, i]))
-				# print(len(pq))
-		# print(pq[2])
-		while len(pq) > 0 and start_time - time_allowance > 0:
-			initial_cost, index, reduced_matrix, path = heapq.heappop(pq)
-			# print(path)
+				tiebreaker += 1
+				state_count += 1
+				
+				heapq.heappush(pq, (node_cost, tiebreaker, i, copy.deepcopy(new_reduced), [starting_node, i]))
+				if len(pq) > max_states:
+					max_states = len(pq)
+
+		while len(pq) > 0 and time.time()-start_time < time_allowance:
+			if len(pq) > max_states:
+				max_states = len(pq)
+			initial_cost, tie, index, reduced_matrix, path = heapq.heappop(pq)
 			if initial_cost >= lower_bound:
 				pruned += 1
-				continue
+				pruned += len(pq)
+				break
 			for i in range(len(cities)):
-				
-				if start_time - time_allowance <= 0:
+				if time.time()-start_time > time_allowance:
+					print("timeout 2")
 					break
 				#We don't want to cycle back to the starting node
 				if i == starting_node:
 					continue
 				edge_cost = reduced_matrix[index, i]
-				
 				if edge_cost == np.inf:
 					continue
-				# print(edge_cost)
 				#same as above
-				new_reduced = reduced_matrix
+				new_reduced = copy.deepcopy(reduced_matrix)
 				new_reduced[index] += np.inf
 				new_reduced[:,i] += np.inf
 				new_reduced[i, index] += np.inf
-				# print(new_reduced)
-				new_reduced, reduction_cost = self.reduce_matrix(copy.copy(new_reduced))
-				#Same
-				# print(initial_cost)
+				new_reduced, reduction_cost = self.reduce_matrix(copy.deepcopy(new_reduced))
 				node_cost = edge_cost + initial_cost + reduction_cost
-				# print(edge_cost)
-				# print(node_cost)
 				if node_cost >= lower_bound:
 					pruned += 1
 				else:
-					path.append(i)
-					if len(path) < n:
-						heapq.heappush(pq, (node_cost, i, new_reduced, path))
+					path_child = copy.copy(path)
+					path_child.append(i)
+					if len(path_child) < n:
+						tiebreaker += 1
+						heapq.heappush(pq, (node_cost, tiebreaker, i , new_reduced, path_child))
+						state_count += 1
+						if len(pq) > max_states:
+							max_states = len(pq)
+						
 					else:
 						#create new lower bound bssf
-						# print(node_cost)
 						lower_bound = node_cost
-						# print(path)
-						# print(matrix)
-						# print(new_reduced)
-						# route = [cities[j] for j in path]
 						count += 1
-						bssf = TSPSolution([cities[j] for j in path])
-						# print(bssf.route)
-
-
+						bssf = TSPSolution([cities[j] for j in path_child])
+		pruned += len(pq)
 		end_time = time.time()
 		results['cost'] = bssf.cost
 		results['time'] = end_time - start_time
 		results['soln'] = bssf
 		results['count'] = count
-		results['max'] = None
-		results['total'] = None
+		results['max'] = max_states
+		results['total'] = state_count
 		results['pruned'] = pruned
-
-			# else:
-				# new_reduced[currentCity] = 
-
-		
 		return results
 
 
