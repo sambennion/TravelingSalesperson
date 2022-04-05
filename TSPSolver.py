@@ -96,7 +96,8 @@ class TSPSolver:
 				index = i
 		return cities.pop(index)
 
-
+	#Time Complexity is about O(n^2)
+	#Space Complexity is O(n) where n is number of cities.
 	def greedy( self,time_allowance=60.0 ):
 		# Set cities to shallow copy of getCities(). 
 		# Copy because we'll be popping them off in my algorithm 
@@ -144,7 +145,8 @@ class TSPSolver:
 		not include the initial BSSF), the best solution found, and three more ints:
 		max queue size, total number of states created, and number of pruned states.</returns>
 	'''
-
+	#Time Complexity is approx 4n time or n^2. Depends on how you look at it. Check report for details.
+	#Space complexity is O(n^2).
 	def reduce_matrix(self, matrix):
 		n = len(matrix)
 		min_of_rows = np.amin(matrix, axis=1)
@@ -169,7 +171,8 @@ class TSPSolver:
 		cost = np.sum(min_of_rows) + np.sum(min_of_columns)
 		return matrix, cost
 
-
+	#Runs in approx O(n^2 * n!) time. More details in report
+	#Space Complexity is O(n^2n * n!) also where n num of cities. Details in report.
 	def branchAndBound( self, time_allowance=60.0 ):
 		
 		tiebreaker = 0
@@ -209,34 +212,31 @@ class TSPSolver:
 				max_states = len(pq)
 			edge_cost = reduced_matrix[starting_node, i]
 			if edge_cost == np.inf:
-				# print(i)
 				continue
 			new_reduced = copy.deepcopy(reduced_matrix)
 			new_reduced[starting_node] += np.inf
 			new_reduced[:,i] += np.inf
 			new_reduced[i, starting_node] = np.inf
 			new_reduced, reduction_cost = self.reduce_matrix(copy.deepcopy(new_reduced))
-			# print(new_reduced)
 			node_cost = edge_cost + initial_cost + reduction_cost
 			
 			if node_cost >= lower_bound:
 				pruned += 1
 			else:
-				tiebreaker += 1
+				tiebreaker += 1				
+				heapq.heappush(pq, (node_cost, node_cost, tiebreaker, i, copy.deepcopy(new_reduced), [starting_node, i]))
 				state_count += 1
-				
-				heapq.heappush(pq, (node_cost, tiebreaker, i, copy.deepcopy(new_reduced), [starting_node, i]))
 				if len(pq) > max_states:
 					max_states = len(pq)
 
 		while len(pq) > 0 and time.time()-start_time < time_allowance:
 			if len(pq) > max_states:
 				max_states = len(pq)
-			initial_cost, tie, index, reduced_matrix, path = heapq.heappop(pq)
+			priority, initial_cost, tie, index, reduced_matrix, path = heapq.heappop(pq)
 			if initial_cost >= lower_bound:
+				# print("sup " + str(pruned))
 				pruned += 1
-				pruned += len(pq)
-				break
+				continue
 			for i in range(len(cities)):
 				if time.time()-start_time > time_allowance:
 					print("timeout 2")
@@ -254,15 +254,17 @@ class TSPSolver:
 				new_reduced[i, index] += np.inf
 				new_reduced, reduction_cost = self.reduce_matrix(copy.deepcopy(new_reduced))
 				node_cost = edge_cost + initial_cost + reduction_cost
+				state_count +=1
 				if node_cost >= lower_bound:
+					# print("Hello " + str(pruned))
 					pruned += 1
 				else:
 					path_child = copy.copy(path)
 					path_child.append(i)
 					if len(path_child) < n:
 						tiebreaker += 1
-						heapq.heappush(pq, (node_cost, tiebreaker, i , new_reduced, path_child))
-						state_count += 1
+						heapq.heappush(pq, (node_cost/len(path_child), node_cost, tiebreaker, i , new_reduced, path_child))
+						# state_count += 1 Added this above instead of using this one.
 						if len(pq) > max_states:
 							max_states = len(pq)
 						
@@ -272,7 +274,11 @@ class TSPSolver:
 						count += 1
 						bssf = TSPSolution([cities[j] for j in path_child])
 		pruned += len(pq)
+		# print(len(pq))
 		end_time = time.time()
+		#Set count to 0 if best bssf was the initial
+		if count == 1: 
+			count = 0
 		results['cost'] = bssf.cost
 		results['time'] = end_time - start_time
 		results['soln'] = bssf
